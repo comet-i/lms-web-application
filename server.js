@@ -52,8 +52,10 @@ function auth(req, res, next) {
 // --- Auth route ------------------------------------------------------------
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body || {};
-  const user = db.users.find((u) => u.email === email && u.password === password);
-  if (!user) return res.status(401).json({ error: "Invalid credentials" });
+  const user = db.users.find((u) => u.email === email);
+  
+  if (!user) return res.status(401).json({ error: "Invalid email address" });
+  if (user.password !== password) return res.status(401).json({ error: "Invalid password" });
 
   const token = jwt.sign(
     { id: user.id, name: user.name, email: user.email, role: user.role },

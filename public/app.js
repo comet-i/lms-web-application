@@ -27,8 +27,14 @@ async function api(path, options = {}) {
     },
   });
   if (res.status === 401) {
-    logout();
-    throw new Error("Session expired");
+    // Only auto-logout if we had a token (expired session). Otherwise, pass error through.
+    if (state.token) {
+      logout();
+      throw new Error("Session expired");
+    }
+    // Let login errors pass through with their specific message
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || "Authentication failed");
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
