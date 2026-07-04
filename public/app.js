@@ -415,8 +415,8 @@ const renderers = {
     const sub = await api("/api/subscriptions");
     const root = $("#view-root");
     const plans = [
-      { name: "Basic", price: "$9.99", period: "/month", features: ["Up to 5 courses", "Community support", "Basic analytics"] },
-      { name: "Premium", price: "$29.99", period: "/month", features: ["Unlimited courses", "Priority support", "Advanced analytics", "Custom branding"] },
+      { name: "Basic", price: "₹799", period: "/month", features: ["Up to 5 courses", "Community support", "Basic analytics"] },
+      { name: "Premium", price: "₹2,499", period: "/month", features: ["Unlimited courses", "Priority support", "Advanced analytics", "Custom branding"] },
       { name: "Enterprise", price: "Custom", period: "pricing", features: ["Everything in Premium", "Dedicated account manager", "API access", "Custom integrations"] },
     ];
     root.innerHTML = `
