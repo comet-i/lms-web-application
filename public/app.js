@@ -175,13 +175,13 @@ const renderers = {
               filtered.length
                 ? filtered
                     .map(
-                      (c) => `<tr>
+                      (c) => `<tr style="cursor: pointer;" data-course-id="${c.id}">
                         <td>${esc(c.title)}</td>
                         <td>${esc(c.instructor)}</td>
                         <td>${esc(c.category)}</td>
                         <td>${c.students}</td>
                         <td>${badge(c.status, c.status === "Active" ? "green" : "muted")}</td>
-                        <td><button class="btn btn-danger btn-sm" data-del="${c.id}">Delete</button></td>
+                        <td onclick="event.stopPropagation();"><button class="btn btn-danger btn-sm" data-del="${c.id}">Delete</button></td>
                       </tr>`
                     )
                     .join("")
@@ -219,6 +219,84 @@ const renderers = {
         renderers.courses();
       })
     );
+
+    root.querySelectorAll("tr[data-course-id]").forEach((row) =>
+      row.addEventListener("click", () => {
+        const courseId = parseInt(row.dataset.courseId);
+        state.currentCourseId = courseId;
+        renderers.courseDetail();
+      })
+    );
+  },
+
+  async courseDetail() {
+    if (!state.currentCourseId) return renderers.courses();
+    const courses = await api("/api/courses");
+    const course = courses.find((c) => c.id === state.currentCourseId);
+    if (!course) return renderers.courses();
+    const comments = await api(`/api/comments/${state.currentCourseId}`);
+    const root = $("#view-root");
+    root.innerHTML = `
+      <div class="panel section-gap">
+        <div class="panel-head">
+          <button class="btn btn-light btn-sm" id="back-btn">← Back to Courses</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>${esc(course.title)}</h3></div>
+        <div class="panel-body">
+          <p><strong>Instructor:</strong> ${esc(course.instructor)}</p>
+          <p><strong>Category:</strong> ${esc(course.category)}</p>
+          <p><strong>Students Enrolled:</strong> ${course.students}</p>
+          <p><strong>Status:</strong> ${badge(course.status, course.status === "Active" ? "green" : "muted")}</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-body">
+          <div class="comments-section">
+            <div class="comments-header">
+              <h4>Discussion & Comments</h4>
+            </div>
+            <div class="comment-form">
+              <textarea id="comment-text" placeholder="Share your thoughts or ask a question..."></textarea>
+              <div class="comment-form-actions">
+                <button id="comment-submit" class="btn btn-primary">Post Comment</button>
+                <button id="comment-cancel" class="btn btn-light">Clear</button>
+              </div>
+            </div>
+            <div class="comment-list">
+              ${comments.length ? comments.map((cm) => `
+                <div class="comment-item">
+                  <div class="comment-meta">
+                    <span class="comment-author">${esc(cm.author)}</span>
+                    <span>${new Date(cm.timestamp).toLocaleDateString()}</span>
+                  </div>
+                  <div class="comment-text">${esc(cm.text)}</div>
+                </div>
+              `).join("") : `<p class="empty">No comments yet. Be the first to comment!</p>`}
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    $("#back-btn").addEventListener("click", () => {
+      state.currentCourseId = null;
+      renderers.courses();
+    });
+
+    $("#comment-submit").addEventListener("click", async () => {
+      const text = $("#comment-text").value.trim();
+      if (!text) return;
+      await api("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({ courseId: state.currentCourseId, text }),
+      });
+      renderers.courseDetail();
+    });
+
+    $("#comment-cancel").addEventListener("click", () => {
+      $("#comment-text").value = "";
+    });
   },
 
   async enrollments() {
@@ -330,6 +408,62 @@ const renderers = {
     filter.addEventListener("change", () => {
       state.userRoleFilter = filter.value;
       renderers.users();
+    });
+  },
+
+  async subscriptions() {
+    const sub = await api("/api/subscriptions");
+    const root = $("#view-root");
+    const plans = [
+      { name: "Basic", price: "$9.99", period: "/month", features: ["Up to 5 courses", "Community support", "Basic analytics"] },
+      { name: "Premium", price: "$29.99", period: "/month", features: ["Unlimited courses", "Priority support", "Advanced analytics", "Custom branding"] },
+      { name: "Enterprise", price: "Custom", period: "pricing", features: ["Everything in Premium", "Dedicated account manager", "API access", "Custom integrations"] },
+    ];
+    root.innerHTML = `
+      <div class="panel section-gap">
+        <div class="panel-head"><h3>Current Plan</h3></div>
+        <div class="panel-body">
+          <p style="margin: 0; font-size: 1.2rem;"><strong>${esc(sub.plan)}</strong> ${sub.renewDate ? `(Renews: ${sub.renewDate})` : ""}</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Choose Your Plan</h3></div>
+        <div class="panel-body">
+          <div class="pricing-grid">
+            ${plans.map((p, i) => `
+              <div class="pricing-card ${sub.plan === p.name ? "active" : ""}">
+                <div class="pricing-header">
+                  <h3 class="pricing-name">${esc(p.name)}</h3>
+                  <div class="pricing-price">${esc(p.price)}<span class="period">${esc(p.period)}</span></div>
+                </div>
+                <div class="pricing-features">
+                  <ul>
+                    ${p.features.map((f) => `<li>${esc(f)}</li>`).join("")}
+                  </ul>
+                </div>
+                <div class="pricing-action">
+                  <button class="btn ${sub.plan === p.name ? "btn-primary" : "btn-light"}" data-plan="${esc(p.name)}">
+                    ${sub.plan === p.name ? "Current Plan" : "Select Plan"}
+                  </button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>`;
+    
+    root.querySelectorAll("[data-plan]").forEach((btn) => {
+      if (btn.textContent.includes("Current Plan")) {
+        btn.disabled = true;
+      } else {
+        btn.addEventListener("click", async () => {
+          await api("/api/subscriptions", {
+            method: "POST",
+            body: JSON.stringify({ plan: btn.dataset.plan }),
+          });
+          renderers.subscriptions();
+        });
+      }
     });
   },
 

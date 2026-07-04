@@ -31,7 +31,21 @@ const activity = [
   { id: 4, text: "New user Katherine Johnson joined as Student", time: "2d ago" },
 ];
 
+const comments = [
+  { id: 1, courseId: 1, author: "Katherine Johnson", text: "Great introductory course!", timestamp: new Date(Date.now() - 3600000).toISOString() },
+  { id: 2, courseId: 1, author: "Linus Torvalds", text: "Very helpful resources.", timestamp: new Date(Date.now() - 7200000).toISOString() },
+];
+
+const subscriptions = [
+  { id: 1, userId: 1, plan: "Enterprise", status: "Active", renewDate: "2025-01-15" },
+  { id: 2, userId: 2, plan: "Premium", status: "Active", renewDate: "2024-12-20" },
+  { id: 3, userId: 3, plan: "Basic", status: "Active", renewDate: "2024-11-30" },
+  { id: 4, userId: 4, plan: "Free", status: "Active", renewDate: null },
+  { id: 5, userId: 5, plan: "Free", status: "Active", renewDate: null },
+  { id: 6, userId: 6, plan: "Basic", status: "Active", renewDate: "2024-12-10" },
+];
+
 // Simple incrementing id helpers
 const nextId = (arr) => (arr.length ? Math.max(...arr.map((x) => x.id)) + 1 : 1);
 
-module.exports = { users, courses, enrollments, activity, nextId };
+module.exports = { users, courses, enrollments, activity, comments, subscriptions, nextId };

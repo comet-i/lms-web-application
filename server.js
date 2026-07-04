@@ -162,6 +162,54 @@ app.post("/api/users", auth, (req, res) => {
   res.status(201).json(safe);
 });
 
+// --- Comments (auth-protected) ------------------------------------------------
+app.get("/api/comments/:courseId", auth, (req, res) => {
+  const courseId = parseInt(req.params.courseId);
+  const comments = db.comments.filter((c) => c.courseId === courseId);
+  res.json(comments);
+});
+
+app.post("/api/comments", auth, (req, res) => {
+  const { courseId, text } = req.body || {};
+  if (!courseId || !text) return res.status(400).json({ error: "Course ID and text are required" });
+  const comment = {
+    id: db.nextId(db.comments),
+    courseId: parseInt(courseId),
+    author: req.user.name,
+    text,
+    timestamp: new Date().toISOString(),
+  };
+  db.comments.push(comment);
+  res.status(201).json(comment);
+});
+
+// --- Subscriptions (auth-protected) -------------------------------------------
+app.get("/api/subscriptions", auth, (req, res) => {
+  const userSub = db.subscriptions.find((s) => s.userId === req.user.id);
+  res.json(userSub || { userId: req.user.id, plan: "Free", status: "Active" });
+});
+
+app.post("/api/subscriptions", auth, (req, res) => {
+  const { plan } = req.body || {};
+  if (!plan) return res.status(400).json({ error: "Plan is required" });
+  let sub = db.subscriptions.find((s) => s.userId === req.user.id);
+  if (sub) {
+    sub.plan = plan;
+    sub.status = "Active";
+    sub.renewDate = plan === "Free" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  } else {
+    sub = {
+      id: db.nextId(db.subscriptions),
+      userId: req.user.id,
+      plan,
+      status: "Active",
+      renewDate: plan === "Free" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    };
+    db.subscriptions.push(sub);
+  }
+  res.json(sub);
+});
+
 // --- Diagnostics (auth-protected snapshot, passwords stripped) -------------
 app.get("/api/diagnostics", auth, (req, res) => {
   res.json({
