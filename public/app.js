@@ -12,6 +12,7 @@ const state = {
   courseFilter: "",
   enrollFilter: "",
   userRoleFilter: "all",
+  dashboardCourseFilter: "",
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -122,13 +123,18 @@ function navigate(view) {
 const renderers = {
   async dashboard() {
     const s = await api("/api/stats");
-    $("#view-root").innerHTML = `
+    const courses = await api("/api/courses");
+    const root = $("#view-root");
+    const filtered = courses.filter((c) =>
+      `${c.title} ${c.instructor} ${c.category}`.toLowerCase().includes(state.dashboardCourseFilter.toLowerCase())
+    );
+    root.innerHTML = `
       <div class="stat-grid">
         ${statCard("Active Courses", s.activeCourses, `${s.totalCourses} total`)}
         ${statCard("Active Enrollments", s.activeEnrollments, `${s.totalEnrollments} total`)}
         ${statCard("Users", s.users, `${s.students} students`)}
       </div>
-      <div class="panel">
+      <div class="panel section-gap">
         <div class="panel-head"><h3>Recent Activity</h3></div>
         <div class="panel-body">
           <ul class="activity-list">
@@ -137,7 +143,41 @@ const renderers = {
               .join("")}
           </ul>
         </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Find Courses</h3></div>
+        <div class="panel-body">
+          <div class="search-bar">
+            <input type="text" id="dashboard-course-search" placeholder="Search by course title, instructor, or category..." value="${esc(state.dashboardCourseFilter)}" />
+          </div>
+          ${filtered.length ? `
+            <table class="table">
+              <thead><tr><th>Course</th><th>Instructor</th><th>Category</th><th>Students</th></tr></thead>
+              <tbody>
+                ${filtered.map((c) => `<tr style="cursor: pointer;" data-course-id="${c.id}">
+                  <td>${esc(c.title)}</td>
+                  <td>${esc(c.instructor)}</td>
+                  <td>${esc(c.category)}</td>
+                  <td>${c.students}</td>
+                </tr>`).join("")}
+              </tbody>
+            </table>
+          ` : `<p class="empty">No courses match your search.</p>`}
+        </div>
       </div>`;
+
+    $("#dashboard-course-search").addEventListener("input", (e) => {
+      state.dashboardCourseFilter = e.target.value;
+      renderers.dashboard();
+    });
+
+    root.querySelectorAll("tr[data-course-id]").forEach((row) =>
+      row.addEventListener("click", () => {
+        const courseId = parseInt(row.dataset.courseId);
+        state.currentCourseId = courseId;
+        renderers.courseDetail();
+      })
+    );
   },
 
   async courses() {
