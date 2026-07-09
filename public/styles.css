@@ -78,7 +78,6 @@ body {
   width: 100%;
   max-width: 500px;
   position: relative;
-  gap: 0;
 }
 .login-header {
   display: flex;
@@ -87,7 +86,7 @@ body {
   gap: 1.5rem;
   position: relative;
   z-index: 2;
-  padding-bottom: 2rem;
+  margin-bottom: -60px;
 }
 .brand-logo-large { width: 140px; height: 140px; }
 .login-header h1 { margin: 0; font-size: 2rem; font-weight: 700; color: white; }
@@ -96,11 +95,10 @@ body {
   background: var(--surface);
   width: 100%;
   border-radius: 16px;
-  padding: 2.5rem 2rem 2rem;
+  padding: 3.5rem 2rem 2rem;
   box-shadow: 0 20px 50px rgba(8, 15, 30, 0.45);
   position: relative;
   z-index: 1;
-  margin-top: -80px;
 }
 .login-brand { text-align: center; margin-bottom: 1.5rem; }
 .brand-logo { width: 56px; height: 56px; margin-bottom: 1rem; }
@@ -142,6 +140,7 @@ body {
   color: var(--text-muted);
 }
 .login-hint strong { color: var(--text); margin-bottom: 0.2rem; }
+
 
 /* ---------- App shell ---------- */
 .app-shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
