@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 
-const db = require("./data");
+const db = require("./db");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -52,7 +52,7 @@ function auth(req, res, next) {
 // --- Auth route ------------------------------------------------------------
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body || {};
-  const user = db.users.find((u) => u.email === email);
+  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
   
   if (!user) return res.status(401).json({ error: "Invalid email address" });
   if (user.password !== password) return res.status(401).json({ error: "Invalid password" });
@@ -71,158 +71,194 @@ app.get("/api/me", auth, (req, res) => {
 
 // --- Dashboard -------------------------------------------------------------
 app.get("/api/stats", auth, (req, res) => {
+  const activeCourses = db.prepare("SELECT COUNT(*) as count FROM courses WHERE status = 'Active'").get().count;
+  const totalCourses = db.prepare("SELECT COUNT(*) as count FROM courses").get().count;
+  const activeEnrollments = db.prepare("SELECT COUNT(*) as count FROM enrollments WHERE status = 'In Progress'").get().count;
+  const totalEnrollments = db.prepare("SELECT COUNT(*) as count FROM enrollments").get().count;
+  const users = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
+  const students = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Student'").get().count;
+  const activity = db.prepare("SELECT * FROM activity ORDER BY rowid DESC").all();
+
   res.json({
-    activeCourses: db.courses.filter((c) => c.status === "Active").length,
-    totalCourses: db.courses.length,
-    activeEnrollments: db.enrollments.filter((e) => e.status === "In Progress").length,
-    totalEnrollments: db.enrollments.length,
-    users: db.users.length,
-    students: db.users.filter((u) => u.role === "Student").length,
-    activity: db.activity,
+    activeCourses,
+    totalCourses,
+    activeEnrollments,
+    totalEnrollments,
+    users,
+    students,
+    activity,
   });
 });
 
 // --- Courses CRUD ----------------------------------------------------------
-app.get("/api/courses", auth, (req, res) => res.json(db.courses));
+app.get("/api/courses", auth, (req, res) => {
+  const courses = db.prepare("SELECT * FROM courses").all();
+  res.json(courses);
+});
 
 app.post("/api/courses", auth, (req, res) => {
   const { title, instructor, category, status } = req.body || {};
   if (!title) return res.status(400).json({ error: "Title is required" });
-  const course = {
-    id: db.nextId(db.courses),
+  const stmt = db.prepare(
+    "INSERT INTO courses (title, instructor, category, students, status) VALUES (?, ?, ?, ?, ?)"
+  );
+  const result = stmt.run(
     title,
-    instructor: instructor || "Unassigned",
-    category: category || "General",
-    students: 0,
-    status: status || "Draft",
-  };
-  db.courses.push(course);
+    instructor || "Unassigned",
+    category || "General",
+    0,
+    status || "Draft"
+  );
+  const course = db.prepare("SELECT * FROM courses WHERE id = ?").get(result.lastInsertRowid);
   res.status(201).json(course);
 });
 
 app.put("/api/courses/:id", auth, (req, res) => {
-  const course = db.courses.find((c) => c.id === Number(req.params.id));
+  const course = db.prepare("SELECT * FROM courses WHERE id = ?").get(Number(req.params.id));
   if (!course) return res.status(404).json({ error: "Course not found" });
-  Object.assign(course, req.body);
-  res.json(course);
+  const updates = Object.keys(req.body).map(key => `${key} = ?`).join(", ");
+  const values = Object.values(req.body);
+  db.prepare(`UPDATE courses SET ${updates} WHERE id = ?`).run(...values, course.id);
+  const updated = db.prepare("SELECT * FROM courses WHERE id = ?").get(course.id);
+  res.json(updated);
 });
 
 app.delete("/api/courses/:id", auth, (req, res) => {
-  const idx = db.courses.findIndex((c) => c.id === Number(req.params.id));
-  if (idx === -1) return res.status(404).json({ error: "Course not found" });
-  const [removed] = db.courses.splice(idx, 1);
-  res.json(removed);
+  const course = db.prepare("SELECT * FROM courses WHERE id = ?").get(Number(req.params.id));
+  if (!course) return res.status(404).json({ error: "Course not found" });
+  db.prepare("DELETE FROM courses WHERE id = ?").run(course.id);
+  res.json(course);
 });
 
 // --- Enrollments -----------------------------------------------------------
-app.get("/api/enrollments", auth, (req, res) => res.json(db.enrollments));
+app.get("/api/enrollments", auth, (req, res) => {
+  const enrollments = db.prepare("SELECT * FROM enrollments").all();
+  res.json(enrollments);
+});
 
 app.post("/api/enrollments", auth, (req, res) => {
   const { student, course, progress } = req.body || {};
   if (!student || !course) return res.status(400).json({ error: "Student and course are required" });
   const pct = Math.max(0, Math.min(100, Number(progress) || 0));
-  const enrollment = {
-    id: db.nextId(db.enrollments),
-    student,
-    course,
-    progress: pct,
-    status: pct >= 100 ? "Completed" : "In Progress",
-  };
-  db.enrollments.push(enrollment);
+  const status = pct >= 100 ? "Completed" : "In Progress";
+  const stmt = db.prepare(
+    "INSERT INTO enrollments (student, course, progress, status) VALUES (?, ?, ?, ?)"
+  );
+  const result = stmt.run(student, course, pct, status);
+  const enrollment = db.prepare("SELECT * FROM enrollments WHERE id = ?").get(result.lastInsertRowid);
   res.status(201).json(enrollment);
 });
 
 app.put("/api/enrollments/:id", auth, (req, res) => {
-  const e = db.enrollments.find((x) => x.id === Number(req.params.id));
+  const e = db.prepare("SELECT * FROM enrollments WHERE id = ?").get(Number(req.params.id));
   if (!e) return res.status(404).json({ error: "Enrollment not found" });
   if (req.body.progress != null) {
-    e.progress = Math.max(0, Math.min(100, Number(req.body.progress)));
-    e.status = e.progress >= 100 ? "Completed" : "In Progress";
+    const newProgress = Math.max(0, Math.min(100, Number(req.body.progress)));
+    const newStatus = newProgress >= 100 ? "Completed" : "In Progress";
+    db.prepare("UPDATE enrollments SET progress = ?, status = ? WHERE id = ?").run(
+      newProgress,
+      newStatus,
+      e.id
+    );
+    const updated = db.prepare("SELECT * FROM enrollments WHERE id = ?").get(e.id);
+    return res.json(updated);
   }
   res.json(e);
 });
 
 // --- Users -----------------------------------------------------------------
 app.get("/api/users", auth, (req, res) => {
-  res.json(db.users.map(({ password, ...u }) => u));
+  const users = db.prepare("SELECT id, name, email, role FROM users").all();
+  res.json(users);
 });
 
 app.post("/api/users", auth, (req, res) => {
   const { name, email, role, password } = req.body || {};
   if (!name || !email) return res.status(400).json({ error: "Name and email are required" });
-  const user = {
-    id: db.nextId(db.users),
-    name,
-    email,
-    role: role || "Student",
-    password: password || "changeme",
-  };
-  db.users.push(user);
-  const { password: _pw, ...safe } = user;
-  res.status(201).json(safe);
+  try {
+    const stmt = db.prepare(
+      "INSERT INTO users (name, email, role, password) VALUES (?, ?, ?, ?)"
+    );
+    const result = stmt.run(name, email, role || "Student", password || "changeme");
+    const user = db.prepare("SELECT id, name, email, role FROM users WHERE id = ?").get(result.lastInsertRowid);
+    res.status(201).json(user);
+  } catch (err) {
+    if (err.message.includes("UNIQUE")) {
+      return res.status(400).json({ error: "Email already exists" });
+    }
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // --- Comments (auth-protected) ------------------------------------------------
 app.get("/api/comments/:courseId", auth, (req, res) => {
   const courseId = parseInt(req.params.courseId);
-  const comments = db.comments.filter((c) => c.courseId === courseId);
+  const comments = db.prepare("SELECT * FROM comments WHERE courseId = ? ORDER BY timestamp DESC").all(courseId);
   res.json(comments);
 });
 
 app.post("/api/comments", auth, (req, res) => {
   const { courseId, text } = req.body || {};
   if (!courseId || !text) return res.status(400).json({ error: "Course ID and text are required" });
-  const comment = {
-    id: db.nextId(db.comments),
-    courseId: parseInt(courseId),
-    author: req.user.name,
-    text,
-    timestamp: new Date().toISOString(),
-  };
-  db.comments.push(comment);
+  const stmt = db.prepare(
+    "INSERT INTO comments (courseId, author, text, timestamp) VALUES (?, ?, ?, ?)"
+  );
+  const result = stmt.run(parseInt(courseId), req.user.name, text, new Date().toISOString());
+  const comment = db.prepare("SELECT * FROM comments WHERE id = ?").get(result.lastInsertRowid);
   res.status(201).json(comment);
 });
 
 // --- Subscriptions (auth-protected) -------------------------------------------
 app.get("/api/subscriptions", auth, (req, res) => {
-  const userSub = db.subscriptions.find((s) => s.userId === req.user.id);
+  const userSub = db.prepare("SELECT * FROM subscriptions WHERE userId = ?").get(req.user.id);
   res.json(userSub || { userId: req.user.id, plan: "Free", status: "Active" });
 });
 
 app.post("/api/subscriptions", auth, (req, res) => {
   const { plan } = req.body || {};
   if (!plan) return res.status(400).json({ error: "Plan is required" });
-  let sub = db.subscriptions.find((s) => s.userId === req.user.id);
-  if (sub) {
-    sub.plan = plan;
-    sub.status = "Active";
-    sub.renewDate = plan === "Free" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  } else {
-    sub = {
-      id: db.nextId(db.subscriptions),
-      userId: req.user.id,
+  const renewDate = plan === "Free" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  
+  const existing = db.prepare("SELECT * FROM subscriptions WHERE userId = ?").get(req.user.id);
+  if (existing) {
+    db.prepare("UPDATE subscriptions SET plan = ?, status = ?, renewDate = ? WHERE userId = ?").run(
       plan,
-      status: "Active",
-      renewDate: plan === "Free" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    };
-    db.subscriptions.push(sub);
+      "Active",
+      renewDate,
+      req.user.id
+    );
+  } else {
+    db.prepare("INSERT INTO subscriptions (userId, plan, status, renewDate) VALUES (?, ?, ?, ?)").run(
+      req.user.id,
+      plan,
+      "Active",
+      renewDate
+    );
   }
+  const sub = db.prepare("SELECT * FROM subscriptions WHERE userId = ?").get(req.user.id);
   res.json(sub);
 });
 
 // --- Diagnostics (auth-protected snapshot, passwords stripped) -------------
 app.get("/api/diagnostics", auth, (req, res) => {
+  const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
+  const courseCount = db.prepare("SELECT COUNT(*) as count FROM courses").get().count;
+  const enrollmentCount = db.prepare("SELECT COUNT(*) as count FROM enrollments").get().count;
+  const users = db.prepare("SELECT id, name, email, role FROM users").all();
+  const courses = db.prepare("SELECT * FROM courses").all();
+  const enrollments = db.prepare("SELECT * FROM enrollments").all();
+
   res.json({
     session: req.user,
     counts: {
-      users: db.users.length,
-      courses: db.courses.length,
-      enrollments: db.enrollments.length,
+      users: userCount,
+      courses: courseCount,
+      enrollments: enrollmentCount,
     },
     tables: {
-      users: db.users.map(({ password, ...u }) => u),
-      courses: db.courses,
-      enrollments: db.enrollments,
+      users,
+      courses,
+      enrollments,
     },
   });
 });
