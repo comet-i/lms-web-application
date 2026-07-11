@@ -52,7 +52,7 @@ function auth(req, res, next) {
 // --- Auth route ------------------------------------------------------------
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body || {};
-  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+  const user = db.exec(`SELECT * FROM users WHERE email = '${email}'`)[0];
   
   if (!user) return res.status(401).json({ error: "Invalid email address" });
   if (user.password !== password) return res.status(401).json({ error: "Invalid password" });
@@ -71,13 +71,13 @@ app.get("/api/me", auth, (req, res) => {
 
 // --- Dashboard -------------------------------------------------------------
 app.get("/api/stats", auth, (req, res) => {
-  const activeCourses = db.prepare("SELECT COUNT(*) as count FROM courses WHERE status = 'Active'").get().count;
-  const totalCourses = db.prepare("SELECT COUNT(*) as count FROM courses").get().count;
-  const activeEnrollments = db.prepare("SELECT COUNT(*) as count FROM enrollments WHERE status = 'In Progress'").get().count;
-  const totalEnrollments = db.prepare("SELECT COUNT(*) as count FROM enrollments").get().count;
-  const users = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
-  const students = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Student'").get().count;
-  const activity = db.prepare("SELECT * FROM activity ORDER BY rowid DESC").all();
+  const activeCourses = db.exec("SELECT COUNT(*) as count FROM courses WHERE status = 'Active'")[0].count;
+  const totalCourses = db.exec("SELECT COUNT(*) as count FROM courses")[0].count;
+  const activeEnrollments = db.exec("SELECT COUNT(*) as count FROM enrollments WHERE status = 'In Progress'")[0].count;
+  const totalEnrollments = db.exec("SELECT COUNT(*) as count FROM enrollments")[0].count;
+  const users = db.exec("SELECT COUNT(*) as count FROM users")[0].count;
+  const students = db.exec("SELECT COUNT(*) as count FROM users WHERE role = 'Student'")[0].count;
+  const activity = db.exec("SELECT * FROM activity ORDER BY rowid DESC");
 
   res.json({
     activeCourses,
@@ -92,42 +92,37 @@ app.get("/api/stats", auth, (req, res) => {
 
 // --- Courses CRUD ----------------------------------------------------------
 app.get("/api/courses", auth, (req, res) => {
-  const courses = db.prepare("SELECT * FROM courses").all();
+  const courses = db.exec("SELECT * FROM courses");
   res.json(courses);
 });
 
 app.post("/api/courses", auth, (req, res) => {
   const { title, instructor, category, status } = req.body || {};
   if (!title) return res.status(400).json({ error: "Title is required" });
-  const stmt = db.prepare(
-    "INSERT INTO courses (title, instructor, category, students, status) VALUES (?, ?, ?, ?, ?)"
-  );
-  const result = stmt.run(
-    title,
-    instructor || "Unassigned",
-    category || "General",
-    0,
-    status || "Draft"
-  );
-  const course = db.prepare("SELECT * FROM courses WHERE id = ?").get(result.lastInsertRowid);
-  res.status(201).json(course);
+  const inst = instructor || "Unassigned";
+  const cat = category || "General";
+  const stat = status || "Draft";
+  db.run(`INSERT INTO courses (title, instructor, category, students, status) VALUES ('${title}', '${inst}', '${cat}', 0, '${stat}')`);
+  const courses = db.exec("SELECT * FROM courses ORDER BY id DESC LIMIT 1");
+  res.status(201).json(courses[0]);
 });
 
 app.put("/api/courses/:id", auth, (req, res) => {
-  const course = db.prepare("SELECT * FROM courses WHERE id = ?").get(Number(req.params.id));
-  if (!course) return res.status(404).json({ error: "Course not found" });
-  const updates = Object.keys(req.body).map(key => `${key} = ?`).join(", ");
-  const values = Object.values(req.body);
-  db.prepare(`UPDATE courses SET ${updates} WHERE id = ?`).run(...values, course.id);
-  const updated = db.prepare("SELECT * FROM courses WHERE id = ?").get(course.id);
-  res.json(updated);
+  const id = Number(req.params.id);
+  const courses = db.exec(`SELECT * FROM courses WHERE id = ${id}`);
+  if (!courses.length) return res.status(404).json({ error: "Course not found" });
+  const updates = Object.keys(req.body).map(key => `${key} = '${req.body[key]}'`).join(", ");
+  db.run(`UPDATE courses SET ${updates} WHERE id = ${id}`);
+  const updated = db.exec(`SELECT * FROM courses WHERE id = ${id}`);
+  res.json(updated[0]);
 });
 
 app.delete("/api/courses/:id", auth, (req, res) => {
-  const course = db.prepare("SELECT * FROM courses WHERE id = ?").get(Number(req.params.id));
-  if (!course) return res.status(404).json({ error: "Course not found" });
-  db.prepare("DELETE FROM courses WHERE id = ?").run(course.id);
-  res.json(course);
+  const id = Number(req.params.id);
+  const courses = db.exec(`SELECT * FROM courses WHERE id = ${id}`);
+  if (!courses.length) return res.status(404).json({ error: "Course not found" });
+  db.run(`DELETE FROM courses WHERE id = ${id}`);
+  res.json(courses[0]);
 });
 
 // --- Enrollments -----------------------------------------------------------
