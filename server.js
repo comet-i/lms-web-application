@@ -52,7 +52,7 @@ function auth(req, res, next) {
 // --- Auth route ------------------------------------------------------------
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body || {};
-  const user = db.exec(`SELECT * FROM users WHERE email = '${email}'`)[0];
+  const user = db.prepare(`SELECT * FROM users WHERE email = '${email}'`).get email;
   
   if (!user) return res.status(401).json({ error: "Invalid email address" });
   if (user.password !== password) return res.status(401).json({ error: "Invalid password" });
