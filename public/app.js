@@ -283,10 +283,10 @@ const renderers = {
         </div>
       </div>
       <div class="panel">
-        <div class="panel-head"><h3>${esc(course.title)}</h3></div>
+        <div class="panel-head"><h3>${course.title}</h3></div>
         <div class="panel-body">
-          <p><strong>Instructor:</strong> ${esc(course.instructor)}</p>
-          <p><strong>Category:</strong> ${esc(course.category)}</p>
+          <p><strong>Instructor:</strong> ${course.instructor}</p>
+          <p><strong>Category:</strong> ${course.category}</p>
           <p><strong>Students Enrolled:</strong> ${course.students}</p>
           <p><strong>Status:</strong> ${badge(course.status, course.status === "Active" ? "green" : "muted")}</p>
         </div>
@@ -308,10 +308,10 @@ const renderers = {
               ${comments.length ? comments.map((cm) => `
                 <div class="comment-item">
                   <div class="comment-meta">
-                    <span class="comment-author">${esc(cm.author)}</span>
+                    <span class="comment-author">${cm.author}</span>
                     <span>${new Date(cm.timestamp).toLocaleDateString()}</span>
                   </div>
-                  <div class="comment-text">${esc(cm.text)}</div>
+                  <div class="comment-text">${cm.text}</div>
                 </div>
               `).join("") : `<p class="empty">No comments yet. Be the first to comment!</p>`}
             </div>
