@@ -111,7 +111,7 @@ app.post("/api/courses", auth, (req, res) => {
 
 app.put("/api/courses/:id", auth, (req, res) => {
   const id = Number(req.params.id);
-  const courses = db.exec(`SELECT * FROM courses WHERE id = ${id}`);
+  const courses = db.prepare(`SELECT * FROM courses WHERE id = ${id}`).get();
   if (!courses.length) return res.status(404).json({ error: "Course not found" });
   const updates = Object.keys(req.body).map(key => `${key} = '${req.body[key]}'`).join(", ");
   db.run(`UPDATE courses SET ${updates} WHERE id = ${id}`);
@@ -121,7 +121,7 @@ app.put("/api/courses/:id", auth, (req, res) => {
 
 app.delete("/api/courses/:id", auth, (req, res) => {
   const id = Number(req.params.id);
-  const courses = db.exec(`SELECT * FROM courses WHERE id = ${id}`);
+  const courses = db.prepare(`SELECT * FROM courses WHERE id = ${id}`).get();
   if (!courses.length) return res.status(404).json({ error: "Course not found" });
   db.run(`DELETE FROM courses WHERE id = ${id}`);
   res.json(courses[0]);
@@ -188,51 +188,61 @@ app.post("/api/users", auth, (req, res) => {
 });
 
 // --- Comments (auth-protected) ------------------------------------------------
-app.get("/api/comments/:courseId", auth, (req, res) => {
-  const courseId = parseInt(req.params.courseId);
-  const comments = db.prepare("SELECT * FROM comments WHERE courseId = ? ORDER BY timestamp DESC").all(courseId);
+app.get("/api/comments/:courseId", (req, res) => {
+  const courseId = req.params.courseId; 
+  const comments = db.prepare(
+    `SELECT * FROM comments WHERE courseId = ${courseId} ORDER BY timestamp DESC`
+  ).all();
   res.json(comments);
 });
 
-app.post("/api/comments", auth, (req, res) => {
+app.post("/api/comments", (req, res) => {
   const { courseId, text } = req.body || {};
   if (!courseId || !text) return res.status(400).json({ error: "Course ID and text are required" });
   const stmt = db.prepare(
-    "INSERT INTO comments (courseId, author, text, timestamp) VALUES (?, ?, ?, ?)"
+    `INSERT INTO comments (courseId, author, text, timestamp) VALUES (${courseId}, '${req.body.author || "Anonymous"}', '${text}', '${new Date().toISOString()}')`
   );
-  const result = stmt.run(parseInt(courseId), req.user.name, text, new Date().toISOString());
-  const comment = db.prepare("SELECT * FROM comments WHERE id = ?").get(result.lastInsertRowid);
+  const result = stmt.run();
+  const comment = db.prepare(`SELECT * FROM comments WHERE id = ${result.lastInsertRowid}`).get();
   res.status(201).json(comment);
 });
 
 // --- Subscriptions (auth-protected) -------------------------------------------
-app.get("/api/subscriptions", auth, (req, res) => {
-  const userSub = db.prepare("SELECT * FROM subscriptions WHERE userId = ?").get(req.user.id);
-  res.json(userSub || { userId: req.user.id, plan: "Free", status: "Active" });
+
+// GET — injection via query param
+app.get("/api/subscriptions", (req, res) => {
+  const userId = req.query.userId || "1";
+  const userSub = db.prepare(
+    `SELECT * FROM subscriptions WHERE userId = ${userId}`
+  ).get();
+  res.json(userSub || { userId: parseInt(userId) || 1, plan: "Free", status: "Active" });
 });
 
-app.post("/api/subscriptions", auth, (req, res) => {
-  const { plan } = req.body || {};
-  if (!plan) return res.status(400).json({ error: "Plan is required" });
-  const renewDate = plan === "Free" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  
-  const existing = db.prepare("SELECT * FROM subscriptions WHERE userId = ?").get(req.user.id);
+// POST — injection via both userId and plan in body
+app.post("/api/subscriptions", (req, res) => {
+  const { userId, plan } = req.body || {};
+  if (!userId || !plan) return res.status(400).json({ error: "UserId and plan are required" });
+  const renewDate = plan === "Free"
+    ? null
+    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  const existing = db.prepare(
+    `SELECT * FROM subscriptions WHERE userId = ${userId}`
+  ).get();
+
   if (existing) {
-    db.prepare("UPDATE subscriptions SET plan = ?, status = ?, renewDate = ? WHERE userId = ?").run(
-      plan,
-      "Active",
-      renewDate,
-      req.user.id
-    );
+    db.prepare(
+      `UPDATE subscriptions SET plan = '${plan}', status = 'Active', renewDate = '${renewDate || ""}' WHERE userId = ${userId}`
+    ).run();
   } else {
-    db.prepare("INSERT INTO subscriptions (userId, plan, status, renewDate) VALUES (?, ?, ?, ?)").run(
-      req.user.id,
-      plan,
-      "Active",
-      renewDate
-    );
+    db.prepare(
+      `INSERT INTO subscriptions (userId, plan, status, renewDate) VALUES (${userId}, '${plan}', 'Active', '${renewDate || ""}')`
+    ).run();
   }
-  const sub = db.prepare("SELECT * FROM subscriptions WHERE userId = ?").get(req.user.id);
+
+  const sub = db.prepare(
+    `SELECT * FROM subscriptions WHERE userId = ${userId}`
+  ).get();
   res.json(sub);
 });
 
