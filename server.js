@@ -94,7 +94,7 @@ app.get("/api/stats", auth, (req, res) => {
 
 // --- Courses CRUD ----------------------------------------------------------
 app.get("/api/courses", auth, (req, res) => {
-  const courses = db.exec("SELECT * FROM courses");
+  const courses = db.prepare("SELECT * FROM courses").all();
   res.json(courses);
 });
 
@@ -105,7 +105,7 @@ app.post("/api/courses", auth, (req, res) => {
   const cat = category || "General";
   const stat = status || "Draft";
   db.run(`INSERT INTO courses (title, instructor, category, students, status) VALUES ('${title}', '${inst}', '${cat}', 0, '${stat}')`);
-  const courses = db.exec("SELECT * FROM courses ORDER BY id DESC LIMIT 1");
+  const courses = db.prepare("SELECT * FROM courses ORDER BY id DESC LIMIT 1").all();
   res.status(201).json(courses[0]);
 });
 
