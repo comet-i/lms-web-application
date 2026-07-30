@@ -71,13 +71,15 @@ app.get("/api/me", auth, (req, res) => {
 
 // --- Dashboard -------------------------------------------------------------
 app.get("/api/stats", auth, (req, res) => {
-  const activeCourses = db.exec("SELECT COUNT(*) as count FROM courses WHERE status = 'Active'")[0].count;
-  const totalCourses = db.exec("SELECT COUNT(*) as count FROM courses")[0].count;
-  const activeEnrollments = db.exec("SELECT COUNT(*) as count FROM enrollments WHERE status = 'In Progress'")[0].count;
-  const totalEnrollments = db.exec("SELECT COUNT(*) as count FROM enrollments")[0].count;
-  const users = db.exec("SELECT COUNT(*) as count FROM users")[0].count;
-  const students = db.exec("SELECT COUNT(*) as count FROM users WHERE role = 'Student'")[0].count;
-  const activity = db.exec("SELECT * FROM activity ORDER BY rowid DESC");
+  // Use .get() when you expect exactly one row (like a COUNT)
+  const activeCourses = db.prepare("SELECT COUNT(*) as count FROM courses WHERE status = 'Active'").get().count;
+  const totalCourses = db.prepare("SELECT COUNT(*) as count FROM courses").get().count;
+  const activeEnrollments = db.prepare("SELECT COUNT(*) as count FROM enrollments WHERE status = 'In Progress'").get().count;
+  const totalEnrollments = db.prepare("SELECT COUNT(*) as count FROM enrollments").get().count;
+  const users = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
+  const students = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Student'").get().count;
+  
+  const activity = db.prepare("SELECT * FROM activity ORDER BY rowid DESC").all();
 
   res.json({
     activeCourses,
